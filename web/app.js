@@ -3,6 +3,9 @@
   'use strict';
 
   var LOG_PAGE_SIZE = 50;
+  var DEFAULT_DATE_FROM = '2025-02-01';
+  var DEFAULT_DATE_TO = '2025-03-01';
+  var FUNNEL_COLORS = ['#213448', '#183B4E', '#27548A', '#205781'];
 
   var FILTER_DIMS = [
     { dim: 'country', optionsId: 'countryOptions', badgeId: 'countryBadge' },
@@ -15,8 +18,8 @@
     rawRows: [],
     truncated: false,
     totalFetched: 0,
-    dateFrom: '',
-    dateTo: '',
+    dateFrom: DEFAULT_DATE_FROM,
+    dateTo: DEFAULT_DATE_TO,
     selected: {
       country: new Set(),
       device_type: new Set(),
@@ -25,9 +28,12 @@
     },
     funnelDimension: 'screen_name',
     funnelSteps: 5,
+    trendGroup: 'day',
+    trendMetric: 'users',
     logSearch: '',
     logSortDir: 'desc',
-    logPage: 1
+    logPage: 1,
+    signupTimes: new Map()
   };
 
   function qs(id) { return document.getElementById(id); }
@@ -71,6 +77,29 @@
 
   // ---------- data loading ----------
 
+  function computeSignupTimes(rows) {
+    var map = new Map();
+    rows.forEach(function (r) {
+      if (!r.User_ID) return;
+      var t = Date.parse(r.timestamp);
+      if (Number.isNaN(t)) return;
+      if (!map.has(r.User_ID) || t < map.get(r.User_ID)) map.set(r.User_ID, t);
+    });
+    return map;
+  }
+
+  function formatElapsed(ms) {
+    if (ms === null || ms === undefined || Number.isNaN(ms) || ms < 0) return '—';
+    var totalSeconds = Math.round(ms / 1000);
+    if (totalSeconds < 60) return totalSeconds + 's';
+    var minutes = Math.floor(totalSeconds / 60);
+    var seconds = totalSeconds % 60;
+    if (minutes < 60) return minutes + 'm ' + seconds + 's';
+    var hours = Math.floor(minutes / 60);
+    var remMinutes = minutes % 60;
+    return hours + 'h ' + remMinutes + 'm';
+  }
+
   function loadData() {
     showLoading();
     var params = new URLSearchParams();
@@ -91,6 +120,7 @@
         state.truncated = Boolean(data.truncated);
         state.totalFetched = data.totalFetched || state.rawRows.length;
         state.logPage = 1;
+        state.signupTimes = computeSignupTimes(state.rawRows);
         buildFilterOptions();
         syncFilterCheckboxes();
         if (state.rawRows.length === 0) {
@@ -177,20 +207,20 @@
 
   function updateFilterSummary() {
     var totalSelected = FILTER_DIMS.reduce(function (s, cfg) { return s + state.selected[cfg.dim].size; }, 0);
-    var hasDate = Boolean(state.dateFrom || state.dateTo);
+    var hasDate = (state.dateFrom !== DEFAULT_DATE_FROM) || (state.dateTo !== DEFAULT_DATE_TO);
     var parts = [];
     if (totalSelected) parts.push(totalSelected + ' segment filter' + (totalSelected > 1 ? 's' : ''));
-    if (hasDate) parts.push('date range');
+    if (hasDate) parts.push('custom date range');
     qs('filterSummaryText').textContent = parts.length ? (parts.join(' + ') + ' applied') : 'No filters applied';
     qs('resetBtn').disabled = !(totalSelected || hasDate);
   }
 
   function resetAll() {
     FILTER_DIMS.forEach(function (cfg) { state.selected[cfg.dim].clear(); });
-    qs('dateFrom').value = '';
-    qs('dateTo').value = '';
-    state.dateFrom = '';
-    state.dateTo = '';
+    qs('dateFrom').value = DEFAULT_DATE_FROM;
+    qs('dateTo').value = DEFAULT_DATE_TO;
+    state.dateFrom = DEFAULT_DATE_FROM;
+    state.dateTo = DEFAULT_DATE_TO;
     state.logSearch = '';
     qs('logSearch').value = '';
     state.logPage = 1;
@@ -297,9 +327,9 @@
   }
 
   function renderFunnel(rows) {
-    var ol = qs('funnelSignal');
+    var container = qs('funnelSignal');
     var emptyNote = qs('funnelEmpty');
-    ol.textContent = '';
+    container.textContent = '';
     var stages = computeFunnelStages(rows, state.funnelDimension, state.funnelSteps);
     if (stages.length === 0) {
       emptyNote.hidden = false;
@@ -308,79 +338,162 @@
     emptyNote.hidden = true;
     var base = stages[0].count || 1;
 
+    var chart = el('div', 'funnel-chart');
+    chart.setAttribute('role', 'group');
+    chart.setAttribute('aria-label', 'Funnel stage counts and drop-off across ' + stages.length + ' stages');
+    var srList = el('ul', 'sr-only');
+
     stages.forEach(function (stage, i) {
-      var li = el('li', 'signal-stage');
-      var node = el('span', 'signal-node');
-      node.setAttribute('aria-hidden', 'true');
-      var body = el('div', 'signal-body');
-      var row = el('div', 'signal-row');
-      row.appendChild(el('span', 'signal-label', stage.label || '(not set)'));
-      row.appendChild(el('span', 'signal-count', formatNumber(stage.count)));
-      row.appendChild(el('span', 'signal-pct', Math.round((stage.count / base) * 100) + '%'));
-      var track = el('div', 'signal-bar-track');
-      var fill = el('div', 'signal-bar-fill');
-      fill.style.width = Math.max((stage.count / base) * 100, 3) + '%';
-      track.appendChild(fill);
-      body.appendChild(row);
-      body.appendChild(track);
-      li.appendChild(node);
-      li.appendChild(body);
-      ol.appendChild(li);
+      var col = el('div', 'funnel-col');
+      var track = el('div', 'funnel-bar-track');
+      var bar = el('div', 'funnel-bar');
+      var pct = Math.round((stage.count / base) * 100);
+      bar.style.height = Math.max(pct, 3) + '%';
+      bar.style.background = FUNNEL_COLORS[i % FUNNEL_COLORS.length];
+      track.appendChild(bar);
+      var value = el('p', 'funnel-value', formatNumber(stage.count));
+      var pctEl = el('p', 'funnel-pct', pct + '%');
+      var label = el('p', 'funnel-label', stage.label || '(not set)');
+      col.appendChild(track);
+      col.appendChild(value);
+      col.appendChild(pctEl);
+      col.appendChild(label);
+      chart.appendChild(col);
+
+      var srLi = el('li', null, 'Stage ' + (i + 1) + ': ' + (stage.label || '(not set)') + ', ' + formatNumber(stage.count) + ' (' + pct + '%)');
+      srList.appendChild(srLi);
 
       if (i < stages.length - 1) {
         var next = stages[i + 1];
         var dropPct = stage.count > 0 ? Math.round((1 - next.count / stage.count) * 100) : 0;
-        var dropLi = el('li', 'signal-drop');
-        var line = el('span', 'drop-line');
-        line.setAttribute('aria-hidden', 'true');
-        var dropLabel = el('span', 'drop-label', '▾ ' + dropPct + '% drop-off');
-        dropLi.appendChild(line);
-        dropLi.appendChild(dropLabel);
-        ol.appendChild(dropLi);
+        var drop = el('div', 'funnel-drop');
+        drop.setAttribute('aria-hidden', 'true');
+        drop.appendChild(el('span', 'funnel-drop-icon', '▾'));
+        drop.appendChild(el('span', null, dropPct + '% drop'));
+        chart.appendChild(drop);
+        srLi.textContent += '; drop-off to next stage: ' + dropPct + '%';
       }
     });
+
+    container.appendChild(chart);
+    container.appendChild(srList);
+  }
+
+  function bucketKeyFor(dateStr, group) {
+    if (!dateStr) return null;
+    if (group === 'month') return dateStr.slice(0, 7);
+    if (group === 'week') {
+      var d = new Date(dateStr + 'T00:00:00Z');
+      if (Number.isNaN(d.getTime())) return dateStr;
+      var day = d.getUTCDay();
+      var diff = (day === 0 ? -6 : 1) - day;
+      var monday = new Date(d);
+      monday.setUTCDate(d.getUTCDate() + diff);
+      return monday.toISOString().slice(0, 10);
+    }
+    return dateStr;
+  }
+
+  function bucketLabel(key, group) {
+    if (group === 'month') {
+      var parts = key.split('-');
+      var d = new Date(Date.UTC(Number(parts[0]), Number(parts[1]) - 1, 1));
+      return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+    }
+    if (group === 'week') {
+      var d2 = new Date(key + 'T00:00:00Z');
+      return 'Wk ' + d2.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+    }
+    var d3 = new Date(key + 'T00:00:00Z');
+    return d3.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
   }
 
   function renderTrend(rows) {
     var container = qs('trendChart');
     container.textContent = '';
-    var byDate = new Map();
+    var group = state.trendGroup;
+    var metric = state.trendMetric;
+
+    var buckets = new Map();
+    var totalUsers = new Set();
+    var totalSessions = new Set();
+
     rows.forEach(function (r) {
       var d = r.first_seen_date;
       if (!d) return;
-      if (!byDate.has(d)) byDate.set(d, new Set());
-      byDate.get(d).add(r.session_id);
+      var key = bucketKeyFor(d, group);
+      if (key === null) return;
+      if (!buckets.has(key)) buckets.set(key, { users: new Set(), sessions: new Set() });
+      var b = buckets.get(key);
+      if (r.User_ID) { b.users.add(r.User_ID); totalUsers.add(r.User_ID); }
+      if (r.session_id) { b.sessions.add(r.session_id); totalSessions.add(r.session_id); }
     });
-    var points = Array.from(byDate.entries()).map(function (entry) {
-      return { date: entry[0], count: entry[1].size };
-    }).sort(function (a, b) { return a.date < b.date ? -1 : (a.date > b.date ? 1 : 0); });
+
+    var points = Array.from(buckets.entries()).map(function (entry) {
+      var key = entry[0];
+      var b = entry[1];
+      var uUsers = b.users.size;
+      var uSessions = b.sessions.size;
+      var val;
+      if (metric === 'users') val = uUsers;
+      else if (metric === 'usersPct') val = totalUsers.size ? (uUsers / totalUsers.size) * 100 : 0;
+      else if (metric === 'sessions') val = uSessions;
+      else val = totalSessions.size ? (uSessions / totalSessions.size) * 100 : 0;
+      return { key: key, label: bucketLabel(key, group), value: val };
+    }).sort(function (a, b) { return a.key < b.key ? -1 : (a.key > b.key ? 1 : 0); });
 
     if (points.length === 0) {
       container.appendChild(el('p', 'panel-empty', 'No dated sessions in this filter set.'));
       return;
     }
 
-    var w = 640, h = 160, pad = 20;
-    var maxCount = Math.max.apply(null, points.map(function (p) { return p.count; }).concat([1]));
-    var stepX = points.length > 1 ? (w - pad * 2) / (points.length - 1) : 0;
+    var isPct = metric === 'usersPct' || metric === 'sessionsPct';
+    var w = 680, h = 220, padL = 46, padR = 16, padT = 16, padB = 34;
+    var rawMax = Math.max.apply(null, points.map(function (p) { return p.value; }).concat([isPct ? 10 : 1]));
+    var maxVal = isPct ? (Math.min(100, Math.ceil(rawMax / 10) * 10) || 10) : (Math.ceil(rawMax * 1.1) || 1);
+
+    var innerW = w - padL - padR, innerH = h - padT - padB;
+    var stepX = points.length > 1 ? innerW / (points.length - 1) : 0;
     var coords = points.map(function (p, i) {
-      var x = pad + i * stepX;
-      var y = h - pad - (p.count / maxCount) * (h - pad * 2);
-      return { x: x, y: y, date: p.date, count: p.count };
+      var x = padL + i * stepX;
+      var y = padT + innerH - (p.value / maxVal) * innerH;
+      return { x: x, y: y, p: p };
     });
 
     var svgNS = 'http://www.w3.org/2000/svg';
     var svg = document.createElementNS(svgNS, 'svg');
     svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
     svg.setAttribute('role', 'img');
-    svg.setAttribute('aria-label', 'Sessions per day trend across ' + points.length + ' days, peak ' + maxCount + ' sessions');
+    var metricLabel = metric === 'users' ? 'unique users' : metric === 'usersPct' ? 'user share' : metric === 'sessions' ? 'unique sessions' : 'session share';
+    svg.setAttribute('aria-label', 'Trend of ' + metricLabel + ' grouped by ' + group + ' across ' + points.length + ' points');
     svg.classList.add('trend-svg');
 
+    var tickCount = 4;
+    for (var t = 0; t <= tickCount; t++) {
+      var ty = padT + innerH - (t / tickCount) * innerH;
+      var gline = document.createElementNS(svgNS, 'line');
+      gline.setAttribute('x1', String(padL));
+      gline.setAttribute('x2', String(w - padR));
+      gline.setAttribute('y1', String(ty));
+      gline.setAttribute('y2', String(ty));
+      gline.setAttribute('class', 'trend-grid');
+      svg.appendChild(gline);
+
+      var tval = (t / tickCount) * maxVal;
+      var tlabel = document.createElementNS(svgNS, 'text');
+      tlabel.setAttribute('x', String(padL - 8));
+      tlabel.setAttribute('y', String(ty + 4));
+      tlabel.setAttribute('class', 'trend-axis-label');
+      tlabel.setAttribute('text-anchor', 'end');
+      tlabel.textContent = isPct ? Math.round(tval) + '%' : formatNumber(Math.round(tval));
+      svg.appendChild(tlabel);
+    }
+
     var areaPath = document.createElementNS(svgNS, 'path');
-    var d = 'M ' + coords[0].x + ' ' + (h - pad) + ' ';
-    coords.forEach(function (c) { d += 'L ' + c.x + ' ' + c.y + ' '; });
-    d += 'L ' + coords[coords.length - 1].x + ' ' + (h - pad) + ' Z';
-    areaPath.setAttribute('d', d);
+    var dstr = 'M ' + coords[0].x + ' ' + (padT + innerH) + ' ';
+    coords.forEach(function (c) { dstr += 'L ' + c.x + ' ' + c.y + ' '; });
+    dstr += 'L ' + coords[coords.length - 1].x + ' ' + (padT + innerH) + ' Z';
+    areaPath.setAttribute('d', dstr);
     areaPath.setAttribute('class', 'trend-area');
     svg.appendChild(areaPath);
 
@@ -389,17 +502,28 @@
     line.setAttribute('class', 'trend-line');
     svg.appendChild(line);
 
-    coords.forEach(function (c) {
+    var labelStep = Math.max(1, Math.ceil(points.length / 8));
+    coords.forEach(function (c, i) {
       var circle = document.createElementNS(svgNS, 'circle');
       circle.setAttribute('cx', String(c.x));
       circle.setAttribute('cy', String(c.y));
       circle.setAttribute('r', '3');
       circle.setAttribute('class', 'trend-dot');
       svg.appendChild(circle);
+
+      if (i % labelStep === 0 || i === coords.length - 1) {
+        var xlabel = document.createElementNS(svgNS, 'text');
+        xlabel.setAttribute('x', String(c.x));
+        xlabel.setAttribute('y', String(h - 8));
+        xlabel.setAttribute('class', 'trend-axis-label');
+        xlabel.setAttribute('text-anchor', 'middle');
+        xlabel.textContent = c.p.label;
+        svg.appendChild(xlabel);
+      }
     });
 
     container.appendChild(svg);
-    var caption = el('p', 'chart-caption', points[0].date + ' – ' + points[points.length - 1].date + ' · peak ' + formatNumber(maxCount) + ' sessions/day');
+    var caption = el('p', 'chart-caption', points[0].label + ' – ' + points[points.length - 1].label + ' · ' + points.length + ' ' + group + (points.length === 1 ? '' : 's') + ' shown');
     container.appendChild(caption);
   }
 
@@ -462,6 +586,10 @@
         var display = (val === null || val === undefined || val === '') ? '—' : String(val);
         tr.appendChild(el('td', null, display));
       });
+      var signupTime = r.User_ID ? state.signupTimes.get(r.User_ID) : undefined;
+      var ts = Date.parse(r.timestamp);
+      var elapsed = (signupTime !== undefined && !Number.isNaN(ts)) ? (ts - signupTime) : null;
+      tr.appendChild(el('td', null, formatElapsed(elapsed)));
       tbody.appendChild(tr);
     });
 
@@ -480,6 +608,11 @@
   // ---------- init ----------
 
   function init() {
+    state.dateFrom = qs('dateFrom').value || DEFAULT_DATE_FROM;
+    state.dateTo = qs('dateTo').value || DEFAULT_DATE_TO;
+    state.trendGroup = qs('trendGroup').value;
+    state.trendMetric = qs('trendMetric').value;
+
     qs('refreshBtn').addEventListener('click', loadData);
     qs('retryBtn').addEventListener('click', loadData);
     qs('emptyResetBtn').addEventListener('click', resetAll);
@@ -498,6 +631,15 @@
     qs('funnelSteps').addEventListener('change', function (e) {
       state.funnelSteps = Number(e.target.value);
       renderAll();
+    });
+
+    qs('trendGroup').addEventListener('change', function (e) {
+      state.trendGroup = e.target.value;
+      renderTrend(applyFilters(state.rawRows));
+    });
+    qs('trendMetric').addEventListener('change', function (e) {
+      state.trendMetric = e.target.value;
+      renderTrend(applyFilters(state.rawRows));
     });
 
     qs('logSearch').addEventListener('input', function (e) {

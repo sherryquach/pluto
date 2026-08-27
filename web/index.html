@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Pluto — Viewership Funnel Console</title>
+<title>Paramount — Viewership Funnel Console</title>
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
@@ -11,9 +11,20 @@
 
   <header class="topbar">
     <div class="topbar-brand">
-      <span class="brand-mark" aria-hidden="true">◎</span>
+      <svg class="brand-mark" viewBox="0 0 40 40" role="img" aria-label="Paramount logo">
+        <defs>
+          <path id="pStar" d="M0,-6 L1.35,-1.85 L5.7,-1.85 L2.18,0.7 L3.53,4.85 L0,2.3 L-3.53,4.85 L-2.18,0.7 L-5.7,-1.85 L-1.35,-1.85 Z"></path>
+        </defs>
+        <use href="#pStar" x="8" y="9" fill="#213448"></use>
+        <use href="#pStar" x="15" y="5" fill="#183B4E"></use>
+        <use href="#pStar" x="22" y="5" fill="#27548A"></use>
+        <use href="#pStar" x="29" y="9" fill="#205781"></use>
+        <use href="#pStar" x="20" y="4" fill="#213448"></use>
+        <path d="M4,33 L13,15 L18,24 L23,10 L29,20 L34,33 Z" fill="#27548A"></path>
+        <path d="M4,33 L13,15 L18,24 L15.5,29 L11,33 Z" fill="#213448"></path>
+      </svg>
       <div class="brand-text">
-        <p class="brand-name">PLUTO</p>
+        <p class="brand-name">PARAMOUNT</p>
         <p class="brand-tag">Viewership funnel console</p>
       </div>
     </div>
@@ -29,11 +40,11 @@
       <div class="date-range">
         <div class="field">
           <label for="dateFrom">From</label>
-          <input type="date" id="dateFrom">
+          <input type="date" id="dateFrom" value="2025-02-01">
         </div>
         <div class="field">
           <label for="dateTo">To</label>
-          <input type="date" id="dateTo">
+          <input type="date" id="dateTo" value="2025-03-01">
         </div>
         <button type="button" id="applyRangeBtn" class="btn btn-primary">Apply range</button>
       </div>
@@ -87,7 +98,7 @@
         <div class="panel-head">
           <div>
             <p class="eyebrow">Signature analysis</p>
-            <h2 id="signalHeading">Viewership signal</h2>
+            <h2 id="signalHeading">Viewership funnel drop-off</h2>
           </div>
           <div class="signal-controls">
             <div class="field field-inline">
@@ -109,13 +120,34 @@
           </div>
         </div>
         <p class="panel-note">Steps are ranked by session reach and ordered by earliest average activity. Each stage counts only sessions that also reached every earlier stage.</p>
-        <ol class="signal" id="funnelSignal"></ol>
+        <div class="funnel-signal" id="funnelSignal"></div>
         <p class="panel-empty" id="funnelEmpty" hidden>Not enough distinct values in this filter set to build a funnel.</p>
       </section>
 
       <div class="panel-grid">
-        <section class="panel" aria-labelledby="trendHeading">
-          <div class="panel-head"><div><p class="eyebrow">Trend</p><h2 id="trendHeading">Sessions over time</h2></div></div>
+        <section class="panel panel-trend" aria-labelledby="trendHeading">
+          <div class="panel-head">
+            <div><p class="eyebrow">Trend</p><h2 id="trendHeading">Audience over time</h2></div>
+            <div class="signal-controls">
+              <div class="field field-inline">
+                <label for="trendGroup">Group by</label>
+                <select id="trendGroup">
+                  <option value="day" selected>Daily</option>
+                  <option value="week">Weekly</option>
+                  <option value="month">Monthly</option>
+                </select>
+              </div>
+              <div class="field field-inline">
+                <label for="trendMetric">Measure</label>
+                <select id="trendMetric">
+                  <option value="users" selected>Unique users</option>
+                  <option value="usersPct">User %</option>
+                  <option value="sessions">Unique sessions</option>
+                  <option value="sessionsPct">Session %</option>
+                </select>
+              </div>
+            </div>
+          </div>
           <div id="trendChart" class="chart-wrap"></div>
         </section>
 
@@ -182,6 +214,7 @@
                 <th scope="col">Event</th>
                 <th scope="col">Screen</th>
                 <th scope="col">Element</th>
+                <th scope="col">Time since signup</th>
               </tr>
             </thead>
             <tbody id="logBody"></tbody>
