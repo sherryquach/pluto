@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pluto — Viewership Funnel Console</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <div class="topbar-brand">
+      <span class="brand-mark" aria-hidden="true">◎</span>
+      <div class="brand-text">
+        <p class="brand-name">PLUTO</p>
+        <p class="brand-tag">Viewership funnel console</p>
+      </div>
+    </div>
+    <div class="topbar-status">
+      <span class="status-dot" id="statusDot" aria-hidden="true"></span>
+      <span id="statusText" class="status-text">Connecting…</span>
+      <button type="button" id="refreshBtn" class="btn btn-ghost">Refresh</button>
+    </div>
+  </header>
+
+  <section class="filters" aria-label="Filters">
+    <div class="filters-row">
+      <div class="date-range">
+        <div class="field">
+          <label for="dateFrom">From</label>
+          <input type="date" id="dateFrom">
+        </div>
+        <div class="field">
+          <label for="dateTo">To</label>
+          <input type="date" id="dateTo">
+        </div>
+        <button type="button" id="applyRangeBtn" class="btn btn-primary">Apply range</button>
+      </div>
+
+      <div class="filter-groups">
+        <details class="filter-group">
+          <summary>Country <span class="count-badge" id="countryBadge" hidden>0</span></summary>
+          <div class="filter-options" id="countryOptions"></div>
+        </details>
+        <details class="filter-group">
+          <summary>Device <span class="count-badge" id="deviceBadge" hidden>0</span></summary>
+          <div class="filter-options" id="deviceOptions"></div>
+        </details>
+        <details class="filter-group">
+          <summary>Event <span class="count-badge" id="eventBadge" hidden>0</span></summary>
+          <div class="filter-options" id="eventOptions"></div>
+        </details>
+        <details class="filter-group">
+          <summary>Screen <span class="count-badge" id="screenBadge" hidden>0</span></summary>
+          <div class="filter-options" id="screenOptions"></div>
+        </details>
+      </div>
+
+      <div class="filters-summary">
+        <span id="filterSummaryText">No filters applied</span>
+        <button type="button" id="resetBtn" class="btn btn-ghost" disabled>Reset all</button>
+      </div>
+    </div>
+  </section>
+
+  <main class="content" id="content">
+
+    <div class="state-panel" id="loadingState">
+      <p>Loading funnel events…</p>
+      <div class="skeleton" aria-hidden="true"></div>
+    </div>
+
+    <div class="state-panel state-error" id="errorState" hidden>
+      <p id="errorText">Something went wrong.</p>
+      <button type="button" id="retryBtn" class="btn btn-primary">Try again</button>
+    </div>
+
+    <div class="state-panel" id="emptyState" hidden>
+      <p>No funnel events match the current filters.</p>
+      <button type="button" id="emptyResetBtn" class="btn btn-primary">Reset filters</button>
+    </div>
+
+    <div id="dataView" hidden>
+
+      <section class="panel panel-signal" aria-labelledby="signalHeading">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Signature analysis</p>
+            <h2 id="signalHeading">Viewership signal</h2>
+          </div>
+          <div class="signal-controls">
+            <div class="field field-inline">
+              <label for="funnelDimension">Stage by</label>
+              <select id="funnelDimension">
+                <option value="screen_name">Screen</option>
+                <option value="event_name">Event</option>
+              </select>
+            </div>
+            <div class="field field-inline">
+              <label for="funnelSteps">Steps</label>
+              <select id="funnelSteps">
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5" selected>5</option>
+                <option value="6">6</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <p class="panel-note">Steps are ranked by session reach and ordered by earliest average activity. Each stage counts only sessions that also reached every earlier stage.</p>
+        <ol class="signal" id="funnelSignal"></ol>
+        <p class="panel-empty" id="funnelEmpty" hidden>Not enough distinct values in this filter set to build a funnel.</p>
+      </section>
+
+      <div class="panel-grid">
+        <section class="panel" aria-labelledby="trendHeading">
+          <div class="panel-head"><div><p class="eyebrow">Trend</p><h2 id="trendHeading">Sessions over time</h2></div></div>
+          <div id="trendChart" class="chart-wrap"></div>
+        </section>
+
+        <section class="panel" aria-labelledby="deviceHeading">
+          <div class="panel-head"><div><p class="eyebrow">Segment</p><h2 id="deviceHeading">Device split</h2></div></div>
+          <p class="panel-note">Sessions by device. Select a bar to filter.</p>
+          <ul class="bar-list" id="deviceBars"></ul>
+        </section>
+
+        <section class="panel" aria-labelledby="countryHeading">
+          <div class="panel-head"><div><p class="eyebrow">Segment</p><h2 id="countryHeading">Top countries</h2></div></div>
+          <p class="panel-note">Sessions by country. Select a bar to filter.</p>
+          <ul class="bar-list" id="countryBars"></ul>
+        </section>
+
+        <section class="panel" aria-labelledby="screensHeading">
+          <div class="panel-head"><div><p class="eyebrow">Segment</p><h2 id="screensHeading">Top screens by event volume</h2></div></div>
+          <p class="panel-note">Event count by screen. Select a bar to filter.</p>
+          <ul class="bar-list" id="screenBars"></ul>
+        </section>
+      </div>
+
+      <section class="panel" aria-labelledby="elementsHeading">
+        <div class="panel-head"><div><p class="eyebrow">Interaction</p><h2 id="elementsHeading">Top interacted elements</h2></div></div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <caption class="sr-only">Screen elements ranked by interaction count</caption>
+            <thead>
+              <tr>
+                <th scope="col">Rank</th>
+                <th scope="col">Element</th>
+                <th scope="col">Screen</th>
+                <th scope="col">Events</th>
+                <th scope="col">Share</th>
+              </tr>
+            </thead>
+            <tbody id="elementsBody"></tbody>
+          </table>
+        </div>
+        <p class="panel-empty" id="elementsEmpty" hidden>No element interactions recorded for this filter set.</p>
+      </section>
+
+      <section class="panel" aria-labelledby="logHeading">
+        <div class="panel-head">
+          <div><p class="eyebrow">Raw data</p><h2 id="logHeading">Event log</h2></div>
+          <div class="log-controls field field-inline">
+            <label for="logSearch">Search session or user ID</label>
+            <input type="search" id="logSearch" placeholder="e.g. sess_1024">
+          </div>
+        </div>
+        <p class="panel-note" id="logSummary"></p>
+        <div class="table-wrap">
+          <table class="data-table data-table-mono">
+            <caption class="sr-only">Raw funnel events matching current filters</caption>
+            <thead>
+              <tr>
+                <th scope="col" aria-sort="descending">
+                  <button type="button" id="sortTimestampBtn" class="th-sort">Timestamp <span id="sortIndicator" aria-hidden="true">▾</span></button>
+                </th>
+                <th scope="col">Session</th>
+                <th scope="col">User</th>
+                <th scope="col">Country</th>
+                <th scope="col">Device</th>
+                <th scope="col">Event</th>
+                <th scope="col">Screen</th>
+                <th scope="col">Element</th>
+              </tr>
+            </thead>
+            <tbody id="logBody"></tbody>
+          </table>
+        </div>
+        <div class="pagination">
+          <button type="button" id="logPrevBtn" class="btn btn-ghost">Previous</button>
+          <span id="logPageText">Page 1 of 1</span>
+          <button type="button" id="logNextBtn" class="btn btn-ghost">Next</button>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <footer class="footer">
+    <p>Data source: Funnel Data.</p>
+  </footer>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
