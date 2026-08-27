@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Paramount — Viewership Funnel Console</title>
+<title>Pluto — Funnel Analytics Console</title>
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
@@ -11,21 +11,13 @@
 
   <header class="topbar">
     <div class="topbar-brand">
-      <svg class="brand-mark" viewBox="0 0 40 40" role="img" aria-label="Paramount logo">
-        <defs>
-          <path id="pStar" d="M0,-6 L1.35,-1.85 L5.7,-1.85 L2.18,0.7 L3.53,4.85 L0,2.3 L-3.53,4.85 L-2.18,0.7 L-5.7,-1.85 L-1.35,-1.85 Z"></path>
-        </defs>
-        <use href="#pStar" x="8" y="9" fill="#213448"></use>
-        <use href="#pStar" x="15" y="5" fill="#183B4E"></use>
-        <use href="#pStar" x="22" y="5" fill="#27548A"></use>
-        <use href="#pStar" x="29" y="9" fill="#205781"></use>
-        <use href="#pStar" x="20" y="4" fill="#213448"></use>
-        <path d="M4,33 L13,15 L18,24 L23,10 L29,20 L34,33 Z" fill="#27548A"></path>
-        <path d="M4,33 L13,15 L18,24 L15.5,29 L11,33 Z" fill="#213448"></path>
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+        <ellipse cx="16" cy="18" rx="13" ry="5" fill="none" stroke="currentColor" stroke-width="1.4" opacity="0.55"></ellipse>
+        <circle cx="16" cy="14" r="6.5" fill="currentColor"></circle>
       </svg>
       <div class="brand-text">
-        <p class="brand-name">PARAMOUNT</p>
-        <p class="brand-tag">Viewership funnel console</p>
+        <p class="brand-name">PLUTO</p>
+        <p class="brand-tag">Funnel analytics console</p>
       </div>
     </div>
     <div class="topbar-status">
@@ -40,11 +32,11 @@
       <div class="date-range">
         <div class="field">
           <label for="dateFrom">From</label>
-          <input type="date" id="dateFrom" value="2025-02-01">
+          <input type="date" id="dateFrom">
         </div>
         <div class="field">
           <label for="dateTo">To</label>
-          <input type="date" id="dateTo" value="2025-03-01">
+          <input type="date" id="dateTo">
         </div>
         <button type="button" id="applyRangeBtn" class="btn btn-primary">Apply range</button>
       </div>
@@ -93,6 +85,42 @@
     </div>
 
     <div id="dataView" hidden>
+
+      <section class="signal-deck" aria-labelledby="deckHeading">
+        <div class="deck-intro">
+          <p class="deck-eyebrow">Live readout</p>
+          <h2 id="deckHeading">Explore the signal</h2>
+          <p class="deck-sub">Pick a measure and a dimension — the readout and every panel below react instantly as you filter.</p>
+        </div>
+        <div class="deck-controls">
+          <div class="field field-deck">
+            <label for="heroMeasure">Measure</label>
+            <select id="heroMeasure">
+              <option value="users" selected>Unique users</option>
+              <option value="sessions">Unique sessions</option>
+              <option value="events">Total events</option>
+              <option value="elements">Element interactions</option>
+            </select>
+          </div>
+          <div class="field field-deck">
+            <label for="heroGroupBy">Group by</label>
+            <select id="heroGroupBy">
+              <option value="country">Country</option>
+              <option value="device_type" selected>Device</option>
+              <option value="event_name">Event</option>
+              <option value="screen_name">Screen</option>
+            </select>
+          </div>
+        </div>
+        <div class="deck-body">
+          <div class="deck-kpi">
+            <p class="deck-kpi-value" id="heroKpiValue">0</p>
+            <p class="deck-kpi-label" id="heroKpiLabel">Unique users</p>
+            <p class="deck-insight" id="heroInsight" aria-live="polite"></p>
+          </div>
+          <ul class="deck-breakdown" id="heroBreakdown" aria-label="Breakdown by selected dimension"></ul>
+        </div>
+      </section>
 
       <section class="panel panel-signal" aria-labelledby="signalHeading">
         <div class="panel-head">

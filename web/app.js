@@ -3,9 +3,9 @@
   'use strict';
 
   var LOG_PAGE_SIZE = 50;
-  var DEFAULT_DATE_FROM = '2025-02-01';
-  var DEFAULT_DATE_TO = '2025-03-01';
-  var FUNNEL_COLORS = ['#213448', '#183B4E', '#27548A', '#205781'];
+  var DEFAULT_DATE_FROM = '';
+  var DEFAULT_DATE_TO = '';
+  var FUNNEL_COLORS = ['#14130F', '#4A4230', '#8A4A18', '#B34E12'];
 
   var FILTER_DIMS = [
     { dim: 'country', optionsId: 'countryOptions', badgeId: 'countryBadge' },
@@ -13,6 +13,20 @@
     { dim: 'event_name', optionsId: 'eventOptions', badgeId: 'eventBadge' },
     { dim: 'screen_name', optionsId: 'screenOptions', badgeId: 'screenBadge' }
   ];
+
+  var HERO_MEASURES = {
+    users: { label: 'Unique users', calc: computeUniqueUsers },
+    sessions: { label: 'Unique sessions', calc: computeUniqueSessions },
+    events: { label: 'Total events', calc: function (rows) { return rows.length; } },
+    elements: { label: 'Element interactions', calc: function (rows) { return rows.filter(function (r) { return Boolean(r.screen_element_name); }).length; } }
+  };
+
+  var HERO_GROUPS = {
+    country: 'Country',
+    device_type: 'Device',
+    event_name: 'Event',
+    screen_name: 'Screen'
+  };
 
   var state = {
     rawRows: [],
@@ -26,6 +40,8 @@
       event_name: new Set(),
       screen_name: new Set()
     },
+    heroMeasure: 'users',
+    heroGroupBy: 'device_type',
     funnelDimension: 'screen_name',
     funnelSteps: 5,
     trendGroup: 'day',
@@ -47,6 +63,18 @@
     if (className) node.className = className;
     if (text !== undefined) node.textContent = text;
     return node;
+  }
+
+  function computeUniqueUsers(rows) {
+    var set = new Set();
+    rows.forEach(function (r) { if (r.User_ID) set.add(r.User_ID); });
+    return set.size;
+  }
+
+  function computeUniqueSessions(rows) {
+    var set = new Set();
+    rows.forEach(function (r) { if (r.session_id) set.add(r.session_id); });
+    return set.size;
   }
 
   // ---------- state panels ----------
@@ -207,7 +235,7 @@
 
   function updateFilterSummary() {
     var totalSelected = FILTER_DIMS.reduce(function (s, cfg) { return s + state.selected[cfg.dim].size; }, 0);
-    var hasDate = (state.dateFrom !== DEFAULT_DATE_FROM) || (state.dateTo !== DEFAULT_DATE_TO);
+    var hasDate = Boolean(state.dateFrom || state.dateTo);
     var parts = [];
     if (totalSelected) parts.push(totalSelected + ' segment filter' + (totalSelected > 1 ? 's' : ''));
     if (hasDate) parts.push('custom date range');
@@ -231,6 +259,7 @@
 
   function renderAll() {
     var filtered = applyFilters(state.rawRows);
+    renderHero(filtered);
     renderFunnel(filtered);
     renderTrend(filtered);
     renderBarList('deviceBars', toCountList(filtered, 'device_type', 'sessions'), 'device_type', state.selected.device_type);
@@ -238,6 +267,75 @@
     renderBarList('screenBars', toCountList(filtered, 'screen_name', 'events'), 'screen_name', state.selected.screen_name);
     renderElementsTable(filtered);
     renderLog(filtered);
+  }
+
+  function computeGroupBreakdown(rows, dim, calcFn) {
+    var groups = new Map();
+    rows.forEach(function (r) {
+      var v = r[dim];
+      if (v === null || v === undefined || v === '') return;
+      if (!groups.has(v)) groups.set(v, []);
+      groups.get(v).push(r);
+    });
+    var items = Array.from(groups.entries()).map(function (entry) {
+      return { value: entry[0], count: calcFn(entry[1]) };
+    });
+    items.sort(function (a, b) { return b.count - a.count; });
+    return items.slice(0, 6);
+  }
+
+  function renderHero(rows) {
+    var measureCfg = HERO_MEASURES[state.heroMeasure];
+    var dim = state.heroGroupBy;
+    var groupLabel = HERO_GROUPS[dim];
+    var total = measureCfg.calc(rows);
+
+    qs('heroKpiValue').textContent = formatNumber(total);
+    qs('heroKpiLabel').textContent = measureCfg.label;
+
+    var breakdown = computeGroupBreakdown(rows, dim, measureCfg.calc);
+    var ul = qs('heroBreakdown');
+    ul.textContent = '';
+
+    if (breakdown.length === 0) {
+      qs('heroInsight').textContent = 'No ' + groupLabel.toLowerCase() + ' data available for this filter set.';
+      ul.appendChild(el('li', 'deck-empty', 'Nothing to break down yet — try widening the filters.'));
+      return;
+    }
+
+    var top = breakdown[0];
+    var pct = total ? Math.round((top.count / total) * 100) : 0;
+    qs('heroInsight').textContent = (top.value || '(not set)') + ' leads by ' + groupLabel.toLowerCase() +
+      ' with ' + formatNumber(top.count) + ' ' + measureCfg.label.toLowerCase() +
+      ' — ' + pct + '% of the total.';
+
+    var max = Math.max.apply(null, breakdown.map(function (i) { return i.count; }).concat([1]));
+    var selectedSet = state.selected[dim];
+
+    breakdown.forEach(function (item) {
+      var li = document.createElement('li');
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'deck-bar-btn';
+      var active = selectedSet.has(item.value);
+      btn.setAttribute('aria-pressed', String(active));
+      if (active) btn.classList.add('is-active');
+
+      var label = el('span', 'deck-bar-label', item.value || '(not set)');
+      var track = el('span', 'deck-bar-track');
+      var fill = el('span', 'deck-bar-fill');
+      fill.style.width = Math.max((item.count / max) * 100, 4) + '%';
+      track.appendChild(fill);
+      var value = el('span', 'deck-bar-value', formatNumber(item.count));
+
+      btn.appendChild(label);
+      btn.appendChild(track);
+      btn.appendChild(value);
+      btn.addEventListener('click', function () { toggleFilterValue(dim, item.value); });
+
+      li.appendChild(btn);
+      ul.appendChild(li);
+    });
   }
 
   function toCountList(rows, dim, mode) {
@@ -612,6 +710,8 @@
     state.dateTo = qs('dateTo').value || DEFAULT_DATE_TO;
     state.trendGroup = qs('trendGroup').value;
     state.trendMetric = qs('trendMetric').value;
+    state.heroMeasure = qs('heroMeasure').value;
+    state.heroGroupBy = qs('heroGroupBy').value;
 
     qs('refreshBtn').addEventListener('click', loadData);
     qs('retryBtn').addEventListener('click', loadData);
@@ -622,6 +722,15 @@
       state.dateFrom = qs('dateFrom').value;
       state.dateTo = qs('dateTo').value;
       loadData();
+    });
+
+    qs('heroMeasure').addEventListener('change', function (e) {
+      state.heroMeasure = e.target.value;
+      renderHero(applyFilters(state.rawRows));
+    });
+    qs('heroGroupBy').addEventListener('change', function (e) {
+      state.heroGroupBy = e.target.value;
+      renderHero(applyFilters(state.rawRows));
     });
 
     qs('funnelDimension').addEventListener('change', function (e) {
